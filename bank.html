@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Banking App — Observer / Strategy / Command</title>
+  <style>
+    :root{font-family:system-ui,Segoe UI,Roboto,Arial;--accent:#2b8aef}
+    body{margin:0;background:#f3f6fb;color:#111}
+    header{background:#fff;padding:16px 20px;box-shadow:0 2px 8px rgba(0,0,0,.06);display:flex;justify-content:space-between;align-items:center}
+    h1{margin:0;font-size:18px}
+    .wrap{max-width:1100px;margin:22px auto;padding:0 16px}
+    .grid{display:grid;grid-template-columns:1fr 380px;gap:18px}
+    .card{background:#fff;padding:16px;border-radius:10px;box-shadow:0 6px 20px rgba(15,25,40,.05)}
+    .muted{color:#666;font-size:13px}
+    .account{display:flex;justify-content:space-between;align-items:center;padding:10px;border-radius:8px;border:1px dashed #eee}
+    button{background:var(--accent);color:#fff;border:0;padding:8px 10px;border-radius:8px;cursor:pointer}
+    .small{font-size:13px;padding:6px 8px}
+    .controls{display:flex;gap:8px}
+    pre{background:#fafafa;padding:10px;border-radius:8px;overflow:auto}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Banking App — Demo (Observer / Strategy / Command)</h1>
+    <div class="muted">Single-file demo: accounts, transactions, notifications, undo/redo</div>
+  </header>
+
+  <div class="wrap">
+    <div class="grid">
+      <section class="card">
+        <div style="font-weight:600;margin-bottom:8px">Accounts</div>
+        <div id="accountsList"></div>
+
+        <hr style="margin:12px 0">
+        <div style="font-weight:600;margin-bottom:8px">Transaction Controls (Command pattern)</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <select id="fromAcc"></select>
+          <select id="toAcc"></select>
+          <input id="amount" placeholder="Amount" type="number" style="padding:8px;border-radius:8px;border:1px solid #eee;width:120px" />
+          <button id="depositBtn" class="small">Deposit</button>
+          <button id="withdrawBtn" class="small">Withdraw</button>
+          <button id="transferBtn" class="small">Transfer</button>
+        </div>
+        <div class="muted">Commands encapsulate deposit/withdraw/transfer so they can be undone/redone.</div>
+
+        <hr style="margin:12px 0">
+        <div style="font-weight:600;margin-bottom:8px">Balance strategy (Strategy pattern)</div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <label><input type="radio" name="balStrategy" value="plain" checked> Plain</label>
+          <label><input type="radio" name="balStrategy" value="interest"> Interest (monthly 1%)</label>
+          <label><input type="radio" name="balStrategy" value="fee"> Maintenance Fee (₹50 if <₹1000)</label>
+        </div>
+        <div id="balanceSummary"></div>
+
+        <hr style="margin:12px 0">
+        <div style="font-weight:600;margin-bottom:8px">Event Log / Notifications (Observer)</div>
+        <div id="eventLog" style="height:160px;overflow:auto;padding:8px;background:#fafafa;border-radius:8px"></div>
+
+      </section>
+
+      <aside class="card">
+        <div style="font-weight:600;margin-bottom:8px">Selected Account Details</div>
+        <div id="accountDetails" class="muted">Select an account to see details.</div>
+
+        <hr style="margin:12px 0">
+        <div style="font-weight:600;margin-bottom:8px">Undo / Redo</div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <button id="undoBtn" class="small" style="background:#777">Undo</button>
+          <button id="redoBtn" class="small" style="background:#777">Redo</button>
+        </div>
+
+        <hr style="margin:12px 0">
+        <div style="font-weight:600;margin-bottom:8px">Quick Actions</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button id="applyMonthlyBtn" class="small">Apply Monthly Calculations</button>
+          <button id="resetBtn" class="small" style="background:#e74c3c">Reset Demo</button>
+        </div>
+
+        <footer style="margin-top:12px" class="muted">Patterns: Observer = notifications; Strategy = balance calculation; Command = transactions + undo/redo.</footer>
+      </aside>
+    </div>
+
+    <section class="card" style="margin-top:16px">
+      <div style="font-weight:600;margin-bottom:8px">Notes</div>
+      <ul>
+        <li><strong>Observer:</strong> Account changes emit notifications to subscribers (UI, logs, alert system).</li>
+        <li><strong>Strategy:</strong> Different monthly settlement rules (interest, fees) can be swapped at runtime.</li>
+        <li><strong>Command:</strong> Transactions are commands so operations can be undone/redone safely.</li>
+      </ul>
+    </section>
+  </div>
+
+  <script>
+  // Sample accounts
+  const ACCOUNTS = [
+    { id: 'a1', name: 'Savings — Rishi', balance: 1200 },
+    { id: 'a2', name: 'Salary — Priya', balance: 45000 },
+    { id: 'a3', name: 'Emergency Fund', balance: 800 }
+  ];
+
+  /***** Observer Pattern *****/
+  class Subject { constructor(){ this.observers = [] } subscribe(o){ this.observers.push(o) } unsubscribe(o){ this.observers = this.observers.filter(x=>x!==o) } notify(payload){ this.observers.forEach(o=> o.update && o.update(payload)) } }
+  class AccountSubject extends Subject { constructor(){ super() } emit(payload){ this.notify(payload) } }
+  const accountEvents = new AccountSubject()
+
+  // UI observer: updates log and account details
+  const uiObserver = {
+    update(payload){ appendLog(JSON.stringify(payload)); renderAccountDetails(payload.accountId) }
+  }
+  accountEvents.subscribe(uiObserver)
+
+  /***** Strategy Pattern: monthly settlement strategies *****/
+  class PlainStrategy { apply(account){ return { balance: account.balance, note: 'No change' } } }
+  class InterestStrategy { apply(account){ const interest = +(account.balance * 0.01).toFixed(2); return { balance: account.balance + interest, note: `1% interest added (₹${interest})` } } }
+  class FeeStrategy { apply(account){ const fee = account.balance < 1000 ? 50 : 0; return { balance: account.balance - fee, note: fee?`Maintenance fee ₹${fee} applied`:'No fee' } } }
+
+  class BalanceContext { constructor(strategy){ this.strategy = strategy } setStrategy(s){ this.strategy = s } apply(account){ return this.strategy.apply(account) } }
+  const balanceContext = new BalanceContext(new PlainStrategy())
+
+  /***** Command Pattern for transactions *****/
+  class CommandManager { constructor(){ this.done = []; this.undone = [] } execute(cmd){ cmd.execute(); this.done.push(cmd); this.undone = [] } undo(){ const cmd = this.done.pop(); if(cmd){ cmd.undo(); this.undone.push(cmd); } } redo(){ const cmd = this.undone.pop(); if(cmd){ cmd.execute(); this.done.push(cmd); } } }
+  const cmdManager = new CommandManager()
+
+  class DepositCommand { constructor(bank, accId, amount){ this.bank=bank; this.accId=accId; this.amount=amount } execute(){ this.bank._deposit(this.accId,this.amount) } undo(){ this.bank._withdraw(this.accId,this.amount) } }
+  class WithdrawCommand { constructor(bank, accId, amount){ this.bank=bank; this.accId=accId; this.amount=amount } execute(){ this.bank._withdraw(this.accId,this.amount) } undo(){ this.bank._deposit(this.accId,this.amount) } }
+  class TransferCommand { constructor(bank, fromId, toId, amount){ this.bank=bank; this.fromId=fromId; this.toId=toId; this.amount=amount } execute(){ this.bank._transfer(this.fromId,this.toId,this.amount) } undo(){ this.bank._transfer(this.toId,this.fromId,this.amount) } }
+
+  /***** Bank (receiver) *****/
+  class Bank {
+    constructor(accounts){ this.accounts = {}; accounts.forEach(a=> this.accounts[a.id] = Object.assign({}, a)) }
+    getAccount(id){ return this.accounts[id] ? Object.assign({}, this.accounts[id]) : null }
+    list(){ return Object.values(this.accounts).map(a=> Object.assign({}, a)) }
+    _deposit(id, amt){ const acc = this.accounts[id]; if(!acc) return; acc.balance += amt; accountEvents.emit({type:'deposit', accountId:id, amount:amt, balance:acc.balance}) }
+    _withdraw(id, amt){ const acc = this.accounts[id]; if(!acc) return; if(acc.balance < amt){ accountEvents.emit({type:'failed-withdraw', accountId:id, amount:amt, balance:acc.balance}); return; } acc.balance -= amt; accountEvents.emit({type:'withdraw', accountId:id, amount:amt, balance:acc.balance}) }
+    _transfer(fromId, toId, amt){ const from = this.accounts[fromId], to = this.accounts[toId]; if(!from || !to) return; if(from.balance < amt){ accountEvents.emit({type:'failed-transfer', from:fromId, to:toId, amount:amt, balance:from.balance}); return; } from.balance -= amt; to.balance += amt; accountEvents.emit({type:'transfer', from:fromId, to:toId, amount:amt, balances:{from:from.balance,to:to.balance}}) }
+    applyMonthly(id){ const acc = this.accounts[id]; if(!acc) return; const result = balanceContext.apply(acc); acc.balance = result.balance; accountEvents.emit({type:'monthly-apply', accountId:id, note:result.note, balance:acc.balance}) }
+    reset(accounts){ this.accounts = {}; accounts.forEach(a=> this.accounts[a.id]=Object.assign({},a)); accountEvents.emit({type:'reset'}) }
+  }
+
+  const bank = new Bank(ACCOUNTS)
+
+  /***** UI helpers *****/
+  const accountsList = document.getElementById('accountsList')
+  const fromSel = document.getElementById('fromAcc')
+  const toSel = document.getElementById('toAcc')
+  const amountInput = document.getElementById('amount')
+  const eventLog = document.getElementById('eventLog')
+  const accountDetails = document.getElementById('accountDetails')
+  const balanceSummary = document.getElementById('balanceSummary')
+
+  function appendLog(text){ const d = document.createElement('div'); d.textContent = `[${new Date().toLocaleTimeString()}] ${text}`; eventLog.prepend(d) }
+
+  function renderAccounts(){
+    accountsList.innerHTML = '';
+    const list = bank.list();
+    list.forEach(a=>{
+      const div = document.createElement('div'); div.className='account';
+      div.innerHTML = `<div><strong>${a.name}</strong><div class='muted'>ID: ${a.id}</div></div><div>₹${a.balance.toFixed(2)}</div>`
+      div.onclick = ()=> renderAccountDetails(a.id)
+      accountsList.appendChild(div)
+    })
+    // populate selects
+    Array.from([fromSel,toSel]).forEach(sel=>{ sel.innerHTML = ''; list.forEach(a=>{ const opt = document.createElement('option'); opt.value=a.id; opt.textContent = a.name + ' — ₹' + a.balance.toFixed(0); sel.appendChild(opt) }) })
+    updateBalanceSummary()
+  }
+
+  function renderAccountDetails(id){ const acc = bank.getAccount(id); if(!acc){ accountDetails.textContent='Select an account.'; return } accountDetails.innerHTML = `<div><strong>${acc.name}</strong></div><div class='muted'>ID: ${acc.id}</div><div style='margin-top:8px;font-weight:600'>Balance: ₹${acc.balance.toFixed(2)}</div>` }
+
+  function updateBalanceSummary(){ const list = bank.list(); const total = list.reduce((s,a)=> s+a.balance,0); balanceSummary.innerHTML = `<div><strong>Total bank balance:</strong> ₹${total.toFixed(2)}</div><div class='muted'>Strategy: ${balanceContext.strategy.constructor.name}</div>` }
+
+  // wire strategy radios
+  document.querySelectorAll('input[name="balStrategy"]').forEach(r=> r.addEventListener('change', e=>{
+    const v = e.target.value;
+    if(v==='plain') balanceContext.setStrategy(new PlainStrategy())
+    if(v==='interest') balanceContext.setStrategy(new InterestStrategy())
+    if(v==='fee') balanceContext.setStrategy(new FeeStrategy())
+    appendLog('Balance strategy set to '+v)
+    updateBalanceSummary()
+  }))
+
+  // wire transaction buttons
+  document.getElementById('depositBtn').addEventListener('click', ()=>{
+    const acc = fromSel.value; const amt = Number(amountInput.value);
+    if(!acc || !amt) return alert('Choose account and enter positive amount');
+    const cmd = new DepositCommand(bank, acc, amt); cmdManager.execute(cmd); renderAccounts();
+  })
+  document.getElementById('withdrawBtn').addEventListener('click', ()=>{
+    const acc = fromSel.value; const amt = Number(amountInput.value);
+    if(!acc || !amt) return alert('Choose account and enter positive amount');
+    const cmd = new WithdrawCommand(bank, acc, amt); cmdManager.execute(cmd); renderAccounts();
+  })
+  document.getElementById('transferBtn').addEventListener('click', ()=>{
+    const from = fromSel.value; const to = toSel.value; const amt = Number(amountInput.value);
+    if(!from || !to || !amt) return alert('Choose both accounts and enter positive amount');
+    if(from===to) return alert('Choose different accounts');
+    const cmd = new TransferCommand(bank, from, to, amt); cmdManager.execute(cmd); renderAccounts();
+  })
+
+  document.getElementById('undoBtn').addEventListener('click', ()=>{ cmdManager.undo(); renderAccounts(); })
+  document.getElementById('redoBtn').addEventListener('click', ()=>{ cmdManager.redo(); renderAccounts(); })
+
+  document.getElementById('applyMonthlyBtn').addEventListener('click', ()=>{
+    const id = fromSel.value; if(!id) return alert('Choose an account to apply monthly rules'); bank.applyMonthly(id); renderAccounts();
+  })
+
+  document.getElementById('resetBtn').addEventListener('click', ()=>{ if(confirm('Reset demo accounts?')){ bank.reset(ACCOUNTS); cmdManager.done = []; cmdManager.undone = []; renderAccounts(); appendLog('Demo reset') } })
+
+  // subscribe a simple logger to events to show meaningful messages
+  accountEvents.subscribe({ update(payload){ if(payload.type==='deposit') appendLog(`Deposit ₹${payload.amount} to ${payload.accountId} (Bal ₹${payload.balance.toFixed(2)})`)
+    else if(payload.type==='withdraw') appendLog(`Withdraw ₹${payload.amount} from ${payload.accountId} (Bal ₹${payload.balance.toFixed(2)})`)
+    else if(payload.type==='transfer') appendLog(`Transfer ₹${payload.amount} ${payload.from} → ${payload.to} (Bal from:₹${payload.balances.from}, to:₹${payload.balances.to})`)
+    else if(payload.type==='failed-withdraw') appendLog(`Failed withdraw ₹${payload.amount} from ${payload.accountId} — insufficient funds`)
+    else if(payload.type==='failed-transfer') appendLog(`Failed transfer ₹${payload.amount} from ${payload.from} — insufficient funds`)
+    else if(payload.type==='monthly-apply') appendLog(`Monthly apply on ${payload.accountId}: ${payload.note} → New balance ₹${payload.balance.toFixed(2)}`)
+    else if(payload.type==='reset') appendLog('Bank reset to initial demo accounts') }
+  })
+
+  // init
+  renderAccounts(); appendLog('Bank demo ready')
+  </script>
+</body>
+</html>
